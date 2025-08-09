@@ -6,8 +6,8 @@ import csv
 import re
 import math
 from bisect import bisect_right
+import pandas as pd
 
-# === 路徑與檔名（固定寫在程式同一資料夾） ===
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 HISTORY_FILE = os.path.join(BASE_DIR, "recommend_history.txt")   # 人類可讀
 HISTORY_CSV  = os.path.join(BASE_DIR, "recommend_history.csv")   # 機器可讀（對獎用）
@@ -88,7 +88,6 @@ def recommend():
     )
     st.text_area("推薦結果", msg, height=130)
 
-    # 寫入推薦歷史（可選擇按鈕啟動）
     if st.button("將本次推薦寫入歷史檔"):
         with open(HISTORY_FILE, "a", encoding="utf-8") as f:
             f.write(msg.replace("\n", " | ") + "\n")
@@ -155,7 +154,6 @@ def check_hits():
             hits = sorted(rec_top5.intersection(target_nums))
             rows.append((ts_str, base_dt.strftime("%Y-%m-%d"), target_dt.strftime("%Y-%m-%d"), str(len(hits)), str(hits)))
 
-    import pandas as pd
     df = pd.DataFrame(rows, columns=["推薦時間", "基準日期", "對獎日期", "中獎數", "中獎號"])
     st.dataframe(df.style.set_properties(**{'text-align': 'center'}))
 
@@ -176,7 +174,7 @@ def parse_numbers(s: str):
             return []
         nums.append(v)
     if len(nums) < 2:
-        st.error("請至少輸入 2 個號碼")
+        st.warning("請至少輸入 2 個號碼")
         return []
     return sorted(set(nums))
 
@@ -189,7 +187,7 @@ def calc_price():
     if not nums:
         return
     n = len(nums)
-    price_defaults = {"2星": 80, "3星": 80, "4星": 80, "5星": 80}
+    price_defaults = {"2星": 50, "3星": 50, "4星": 50, "5星": 50}
     st.write("### 單注金額設定")
     price_inputs = {}
     cols = st.columns(4)
@@ -205,7 +203,6 @@ def calc_price():
         rows.append((star, count, price, subtotal))
         total += subtotal
 
-    import pandas as pd
     df = pd.DataFrame(rows, columns=["星別", "組合數", "單注金額", "小計"])
     st.dataframe(df.style.format({"單注金額": "{:.0f}", "小計": "{:.0f}"}))
     st.markdown(f"**總金額：{total:.0f}**")
@@ -250,10 +247,4 @@ if st.button("🔎 檢查推薦是否中獎（對照下一期）"):
 if st.button("💰 計算組合與金額"):
     calc_price()
 
-if st.button("📈 產生並顯示 3 的倍數圖表"):
-    try:
-        core.generate_multiples_of_3_chart()
-        st.image(core.CHART_FILE, caption="3 的倍數號碼出現次數")
-        st.success("圖表已產生")
-    except Exception as e:
-        st.error(f"產生圖表失敗：{e}")
+
