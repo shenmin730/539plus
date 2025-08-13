@@ -147,8 +147,14 @@ with col2:
         except Exception as e:
             st.error(f"分析失敗：{e}")
 
-# ========== 功能：顯示推薦 ==========
+# ========== 功能：顯示與寫入推薦 ==========
 st.markdown("### 🎯 顯示推薦號碼")
+
+# 初始化暫存
+if "last_reco" not in st.session_state:
+    st.session_state["last_reco"] = None  # dict: {msg, now_str, base_date, top5}
+
+# 產生推薦
 if st.button("產生推薦"):
     try:
         result = core.recommend_by_transition()
@@ -166,29 +172,61 @@ if st.button("產生推薦"):
                 f"🏆 機率最高前 5：{top5}\n"
                 f"🔢 3 的倍數前三：{top3_m3}"
             )
-            st.text_area("推薦結果", msg, height=130)
-
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                if st.button("寫入推薦歷史檔"):
-                    with open(HISTORY_FILE, "a", encoding="utf-8") as f:
-                        f.write(msg.replace("\n", " | ") + "\n")
-                    if base_date:
-                        with open(HISTORY_CSV, "a", newline="", encoding="utf-8") as f:
-                            csv.writer(f).writerow([now_str, base_date.strftime("%Y-%m-%d"), ",".join(map(str, top5))])
-                    st.success("已寫入歷史檔")
-            with c2:
-                if os.path.exists(HISTORY_FILE):
-                    _download_bytes("recommend_history.txt",
-                                    open(HISTORY_FILE, "rb").read(),
-                                    "下載 TXT 歷史")
-            with c3:
-                if os.path.exists(HISTORY_CSV):
-                    _download_bytes("recommend_history.csv",
-                                    open(HISTORY_CSV, "rb").read(),
-                                    "下載 CSV 歷史")
+            # 把本次推薦暫存起來，供下一輪「寫入歷史」使用
+            st.session_state["last_reco"] = {
+                "msg": msg,
+                "now_str": now_str,
+                "base_date": base_date,
+                "top5": top5,
+            }
     except Exception as e:
         st.error(f"推薦失敗：{e}")
+
+# 顯示目前暫存的推薦結果（若有）
+if st.session_state["last_reco"]:
+    st.text_area("最新推薦結果（已暫存，可直接寫入歷史）",
+                 st.session_state["last_reco"]["msg"],
+                 height=130)
+    c1, c2, c3 = st.columns(3)
+
+    # 寫入推薦歷史
+    with c1:
+        if st.button("寫入推薦歷史檔"):
+            try:
+                data = st.session_state["last_reco"]
+                msg = data["msg"]
+                now_str = data["now_str"]
+                base_date = data["base_date"]
+                top5 = data["top5"]
+
+                # 寫入 TXT
+                with open(HISTORY_FILE, "a", encoding="utf-8") as f:
+                    f.write(msg.replace("\n", " | ") + "\n")
+
+                # 寫入 CSV（用於對獎）
+                if base_date:
+                    with open(HISTORY_CSV, "a", newline="", encoding="utf-8") as f:
+                        writer = csv.writer(f)
+                        writer.writerow([now_str,
+                                         base_date.strftime("%Y-%m-%d"),
+                                         ",".join(map(str, top5))])
+                st.success("已寫入歷史檔")
+            except Exception as e:
+                st.error(f"寫入失敗：{e}")
+
+    # 下載按鈕（若檔案存在）
+    with c2:
+        if os.path.exists(HISTORY_FILE):
+            with open(HISTORY_FILE, "rb") as fh:
+                st.download_button("下載 TXT 歷史", data=fh.read(),
+                                   file_name="recommend_history.txt")
+    with c3:
+        if os.path.exists(HISTORY_CSV):
+            with open(HISTORY_CSV, "rb") as fh:
+                st.download_button("下載 CSV 歷史", data=fh.read(),
+                                   file_name="recommend_history.csv")
+else:
+    st.caption("尚未有暫存的推薦結果，請先點『產生推薦』。")
 
 # ========== 功能：顯示推薦歷史 ==========
 st.markdown("### 📚 推薦歷史")
@@ -242,10 +280,10 @@ st.markdown("### 💰 組合與金額試算")
 with st.form("price_form"):
     nums_str = st.text_input("輸入號碼（用空白或逗號分隔，1~39）", "")
     c21, c22, c23, c24 = st.columns(4)
-    p2 = c21.number_input("2星單注", min_value=0, value=50)
-    p3 = c22.number_input("3星單注", min_value=0, value=50)
-    p4 = c23.number_input("4星單注", min_value=0, value=50)
-    p5 = c24.number_input("5星單注", min_value=0, value=50)
+    p2 = c21.number_input("2星單注", min_value=0, value=80)
+    p3 = c22.number_input("3星單注", min_value=0, value=80)
+    p4 = c23.number_input("4星單注", min_value=0, value=80)
+    p5 = c24.number_input("5星單注", min_value=0, value=80)
     calc = st.form_submit_button("計算組合與金額")
 
 if calc:
@@ -276,25 +314,4 @@ if calc:
         csv_buf = io.StringIO(); df_price.to_csv(csv_buf, index=False, encoding="utf-8-sig")
         _download_bytes("price_calc.csv", csv_buf.getvalue().encode("utf-8-sig"), "下載試算表")
 
-# ========== 功能：3 的倍數圖表 ==========
-st.markdown("### 📈 產生並顯示 3 的倍數圖表")
-if st.button("產生圖表"):
-    try:
-        core.generate_multiples_of_3_chart()
-        if os.path.exists(core.CHART_FILE):
-            st.image(core.CHART_FILE, caption="3 的倍數號碼出現次數")
-        else:
-            # 兼容雲端無法寫檔時，直接畫一次
-            draws = _load_all_draws()
-            counter = Counter()
-            for _, nums in draws: counter.update(nums)
-            x = list(range(3,40,3)); y=[counter.get(i,0) for i in x]
-            plt.figure(figsize=(10,5))
-            bars = plt.bar([str(i) for i in x], y)
-            for b in bars:
-                h=b.get_height(); plt.text(b.get_x()+b.get_width()/2,h+0.5,str(int(h)),ha="center",va="bottom",fontsize=9)
-            plt.title("今彩539 - 3 的倍數號碼出現次數"); plt.xlabel("號碼"); plt.ylabel("出現次數")
-            st.pyplot(plt.gcf())
-        st.success("圖表完成")
-    except Exception as e:
-        st.error(f"產生圖表失敗：{e}")
+
